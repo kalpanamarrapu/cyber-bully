@@ -17,11 +17,7 @@ from flask_cors import CORS
 BASE_DIR = Path(__file__).resolve().parent
 
 MODEL_PATH = BASE_DIR / "models" / "classifier.joblib"
-
-MULTILABEL_MODEL_PATH = (
-    BASE_DIR / "models" / "multilabel_classifier.joblib"
-)
-
+MULTILABEL_MODEL_PATH = BASE_DIR / "models" / "multilabel_classifier.joblib"
 DB_PATH = BASE_DIR / "history.db"
 
 LABEL_COLUMNS = [
@@ -40,6 +36,7 @@ LABEL_COLUMNS = [
 
 app = Flask(__name__)
 
+# Allow local development and the public website
 CORS(
     app,
     resources={
@@ -47,6 +44,7 @@ CORS(
             "origins": [
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
+                "https://cyber-bully-frontend.onrender.com",
             ]
         }
     },
@@ -80,22 +78,14 @@ else:
 # ==========================================
 
 def init_db():
-
     with sqlite3.connect(DB_PATH) as conn:
-
         conn.execute("""
             CREATE TABLE IF NOT EXISTS predictions (
-
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-
                 text TEXT NOT NULL,
-
                 label INTEGER NOT NULL,
-
                 score REAL NOT NULL,
-
                 created_at TEXT NOT NULL
-
             )
         """)
 
@@ -108,15 +98,6 @@ init_db()
 # ==========================================
 
 def get_prediction_score(loaded_model, text, prediction):
-
-    """
-    Supports:
-    - Logistic Regression
-    - Linear SVM
-    - Multinomial Naive Bayes
-
-    Returns a confidence-like score for class 1.
-    """
 
     if hasattr(loaded_model, "predict_proba"):
 
@@ -145,16 +126,13 @@ def get_prediction_score(loaded_model, text, prediction):
 
             score = float(scores[0])
 
-            # Binary decision scores point towards classes_[1].
             if classes[1] != 1:
                 score = -score
 
-            # Convert decision score to a confidence-like value.
             score = np.clip(score, -50, 50)
 
             return float(1 / (1 + np.exp(-score)))
 
-    # Fallback if the model does not support scores.
     return float(prediction == 1)
 
 
@@ -209,8 +187,6 @@ def predict():
 
     try:
 
-        # Binary prediction
-
         raw_prediction = model.predict([text])[0]
 
         label = int(raw_prediction)
@@ -221,9 +197,7 @@ def predict():
             label
         )
 
-        # ==================================
-        # MULTILABEL PREDICTION
-        # ==================================
+        # Multilabel prediction
 
         categories = {}
 
@@ -235,12 +209,9 @@ def predict():
                 LABEL_COLUMNS,
                 multi_prediction
             ):
-
                 categories[name] = bool(value)
 
-        # ==================================
-        # DATABASE STORAGE
-        # ==================================
+        # Database storage
 
         created_at = datetime.now(
             timezone.utc
@@ -264,9 +235,7 @@ def predict():
 
             prediction_id = cursor.lastrowid
 
-        # ==================================
-        # API RESPONSE
-        # ==================================
+        # API response
 
         return jsonify({
 
@@ -293,7 +262,7 @@ def predict():
 
         })
 
-    except Exception as error:
+    except Exception:
 
         app.logger.exception("Prediction failed")
 
@@ -316,11 +285,8 @@ def history():
         rows = conn.execute(
             """
             SELECT id, text, label, score, created_at
-
             FROM predictions
-
             ORDER BY id DESC
-
             LIMIT 50
             """
         ).fetchall()
@@ -337,7 +303,7 @@ def history():
 if __name__ == "__main__":
 
     app.run(
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=5000,
-        debug=True
+        debug=False
     )
